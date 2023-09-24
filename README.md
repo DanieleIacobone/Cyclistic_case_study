@@ -1,0 +1,406 @@
+---
+title: "Cyclistic Analysis"
+author: "Your Name"
+date: "2023-09-24"
+output:
+  html_document:
+    df_print: paged
+  pdf_document:
+    latex_engine: xelatex
+    keep_tex: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+options(repos = c(CRAN = "https://cran.rstudio.com/"))
+install.packages('tidyverse')
+```
+
+## Introduction
+
+Cyclistic is a bike-share program that features more than 5,800 bicycles and 600 docking stations. Cyclistic sets itself apart by also offering reclining bikes, hand tricycles, and cargo bikes, making bike-share more inclusive to people with disabilities and riders who can't use a standard two-wheeled bike. The majority of riders opt for traditional bikes; about 8% of riders use the assistive options. Cyclistic users are more likely to ride for leisure, but about 30% use them to commute to work each day. Moreno is The director of marketing and my manager. Moreno is responsible for the development of campaigns and initiatives to promote the bike-share program. These may include email, social media, and other channels.
+
+### About the company
+
+In 2016, Cyclistic launched a successful bike-share offering. Since then, the program has grown to a fleet of 5,824 bicycles that are geotracked and locked into a network of 692 stations across Chicago. The bikes can be unlocked from one station and returned to any other station in the system anytime. Until now, Cyclistic's marketing strategy relied on building general awareness and appealing to broad consumer segments. One approach that helped make these things possible was the flexibility of its pricing plans: single-ride passes, full-day passes, and annual memberships. Customers who purchase single-ride or full-day passes are referred to as casual riders. Customers who purchase annual memberships are Cyclistic members. Cyclistic's finance analysts have concluded that annual members are much more profitable than casual riders. Although the pricing flexibility helps Cyclistic attract more customers, Moreno believes that maximizing the number of annual members will be key to future growth. Rather than creating a marketing campaign that targets all-new customers, Moreno believes there is a very good chance to convert casual riders into members. She notes that casual riders are already aware of the Cyclistic program and have chosen Cyclistic for their mobility needs. Moreno has set a clear goal: Design marketing strategies aimed at converting casual riders into annual members. In order to do that, however, the marketing analyst team needs to better understand how annual members and casual riders differ, why casual riders would buy a membership, and how digital media could affect their marketing tactics. Moreno and her team are interested in analyzing the Cyclistic historical bike trip data to identify trends.
+
+Moreno has assinged me the first question to answer: how annual members and casual riders differ.
+
+### Business Task
+
+The purpose of this report is to analyse the data on Cyclistic bike usage for the first quarter of 2023 to understand how annual members and casual users interact with the bike-sharing service. The main goal is to identify usage patterns, station preferences, behavioral differences and opportunities for improvement, to optimize the user experience and encourage long-term subscription by identifying how annual members and casual riders differ.
+
+### About the data
+
+I will use Cyclistic's historical trip data to analyze and identify trends. The data has been made available by Motivate International Inc. Bikeshare hereby that grants to me a non-exclusive, royalty-free, limited, perpetual license to access, reproduce, analyze, copy, modify, distribute in my product or service and use the Data for any lawful purpose ("License"). The dataset are organised by month, and I decided to analyse the first quarter of this year.
+
+## Setting the environment
+
+### Installing packages and loading libraries
+
+For the following analysis I chose to install the following packages and load the related libraries:
+
+```{r installing packages and libraries}
+install.packages("tidyverse") # For data manipulation and visualisation
+install.packages("ggplot2") # For data visualisation
+install.packages("dplyr") # For data manipulation
+install.packages("lubridate") # For data function
+install.packages("geosphere")
+install.packages("janitor")
+install.packages("ggmap")
+install.packages("osmdata")
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(lubridate)
+library(geosphere)
+library(janitor)
+library(ggmap)
+library(osmdata)
+```
+
+### Import the datasets
+
+Now I'll import the 4 data set relating to the first for months of 2023.
+
+```{r data_import}
+list.files()
+
+gen <- read_csv("dataset/gennaio.csv")
+feb <- read_csv("dataset/febbraio.csv")
+mar <- read_csv("dataset/marzo.csv")
+apr <- read_csv("dataset/aprile.csv")
+```
+
+### Wrangle data and combine them into a single dataset
+
+Before I combine the datasets, I need to compare the column names in each of the files and make sure they match perfectly.
+
+```{r data_wrangling}
+colnames(gen)
+colnames(feb)
+colnames(mar) 
+colnames(apr)
+```
+
+They seems to be pretty consistent.
+
+### Inspect the dataframes and look for incongruencies
+
+I compare the dataset and see if there are any inconsistency to possibly eliminate them.
+
+```{r data_inspection}
+str(gen)
+str(feb)
+str(mar)
+str(apr)
+
+# Convert ride_id and rideable_type to character so that they can stack correctly
+gen <- mutate(gen, ride_id = as.character(ride_id)
+,rideable_type = as.character(rideable_type))
+feb <- mutate(feb, ride_id = as.character(ride_id)
+,rideable_type = as.character(rideable_type))
+mar <- mutate(mar, ride_id = as.character(ride_id)
+,rideable_type = as.character(rideable_type))
+apr <- mutate(apr, ride_id = as.character(ride_id)
+,rideable_type = as.character(rideable_type))
+```
+
+### Stack individual quarter's dataframes into one big data frame
+
+I combine the 4 datasets into a single one to make the analysis easier.
+
+```{r}
+all_trips <- bind_rows(gen, feb, mar, apr)
+```
+
+## Process the Data
+
+### Inspect the new table that has been created
+
+Let's analyse the new table created in detail.
+
+```{r}
+colnames(all_trips) #List of column names
+nrow(all_trips) #How many rows are in data frame
+dim(all_trips) #Dimensions of the data frame
+head(all_trips) #See the first 6 rows of data frame. 
+tail(all_trips) 
+str(all_trips) #See list of columns and data types (numeric, character, etc)
+summary(all_trips) #Statistical summary of data. Mainly for numerics. 
+```
+
+### Consolidate labels
+
+```{r}
+all_trips <- all_trips %>%
+mutate(member_casual = recode(member_casual ,"Subscriber" = "member"
+,"Customer" = "casual"))
+
+table(all_trips$member_casual)
+```
+
+### Add columns that list the date, month, day, and year of each ride
+
+The following step will allow me to aggregate ride data.
+
+```{r}
+all_trips <- all_trips %>% 
+  mutate(year = format(as.Date(started_at), "%Y")) %>% # extract year
+  mutate(month = format(as.Date(started_at), "%B")) %>% #extract month
+  mutate(date = format(as.Date(started_at), "%d")) %>% # extract date
+  mutate(day_of_week = format(as.Date(started_at), "%A")) %>% # extract day of week
+  mutate(ride_length = difftime(ended_at, started_at)) %>% 
+  mutate(start_time = strftime(started_at, "%H"))
+```
+
+Now I will add a ride_lenght column to all_trips (in seconds):
+
+```{r}
+all_trips$ride_length <- difftime(all_trips$ended_at,all_trips$started_at)
+```
+
+Let's inspect the structure of the columns:
+
+```{r}
+str(all_trips)
+```
+
+Now, I need to convert "ride_length" from Factor to numeric so I can run calculations on the data
+
+```{r}
+# Is the column ride_lenght a Factor?
+is.factor(all_trips$ride_length)
+
+# Converting in numeric
+all_trips$ride_length <- as.numeric(as.character(all_trips$ride_length)) 
+
+# Is the column ride_lenght numeric?
+is.numeric(all_trips$ride_length)
+```
+
+### Remove "bad" data
+
+The dataframe includes a few hundred entries when bikes were taken out of docks and checked for quality by Divvy or ride_length was negative. I will create a new version of the dataframe (v2) since data is being removed.
+
+```{r}
+all_trips_v2 <- all_trips[!(all_trips$start_station_name == "HQ QR" | all_trips$ride_length<0),]
+
+# Remove NA values in the column ride_length
+all_trips_v2 <- all_trips_v2[! is.na(all_trips_v2$ride_length) , ]
+```
+
+## Analyse the Data
+
+### Descriptive analysis on ride_length (all figures in seconds)
+
+All the required information are in one place and ready for exploration. Now I calculate the average, median, maximum and minimum duration for each ride.
+
+```{r}
+# Average ride length
+mean(all_trips_v2$ride_length)  #straight average (total ride length / rides)
+
+# Median ride length
+median(all_trips_v2$ride_length) # midpoint number in the ascending array of ride lengths
+
+# Max ride length
+max(all_trips_v2$ride_length) # longest ride
+
+# Min ride length
+min(all_trips_v2$ride_length) # shortest ride
+
+# Condense the four lines above 
+summary(all_trips_v2$ride_length)
+```
+
+As we can see from the results above bout the 'ride_length' data regarding the first quarter of 2023 the longest and shortest rides have extreme values. Due to lack of information about them, it is not possible to find out the reasons behind it, but it need to be analysed further.
+
+### Comparison between members and casual users
+
+```{r}
+# Mean of ride length by user
+mean_ride_length_by_user <- aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual, FUN = mean)
+print("Mean of ride length per kind of user:")
+print(mean_ride_length_by_user)
+
+# Median of ride length by user
+median_ride_length <- aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual, FUN = median) 
+print("Median of ride length by user:")
+print(median_ride_length)
+
+# Max of ride length by user
+max_ride_length <- aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual, FUN = max) 
+print("Max of ride length by user:")
+print(max_ride_length)
+
+# Min of ride length by user
+min_ride_length <- aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual, FUN = min)
+print("Min of ride lenth by user:")
+print(min_ride_length)
+```
+
+From the above data, we can conclude that casual riders have longer rides thatn annual members, as the average ride length and mean ride length is lower that the respective data of casual users.
+
+```{r}
+#  Average ride time by each day for members vs casual users
+aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual + all_trips_v2$day_of_week, FUN = mean)
+```
+
+The days of the week are out of order. Let's fix that:
+
+```{r}
+all_trips_v2$day_of_week <- ordered(all_trips_v2$day_of_week, levels=c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"))
+
+aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual + all_trips_v2$day_of_week, FUN = mean)
+```
+
+## Analyse and visualise the Data
+
+### Analysis and visualisation of total rides taken by type of user
+
+```{r}
+# Members vs causal riders difference depending on total rides taken
+all_trips_v2 %>%
+  group_by(member_casual) %>%
+  summarise(ride_count =length(ride_id), ride_percentage = (length(ride_id) / nrow(all_trips_v2)) * 100)
+
+ggplot(all_trips_v2, aes(x = member_casual, fill = member_casual)) + geom_bar() + labs(x = "Casual vs Members", y = "Number of Rides", title = "Casual vs Members distribution", fill = "User Type")
+```
+
+The bar chart above shows the distribution of Casual riders and Annual members depending on the rides taken between January and April. Overall, we can see that Annual Members are the most active users of the bike-sharing service. Casual users have a count of 248.167 rides taken, representing about the 27% of total rides. On the other hand, Annual members have a count more than the double of Casual users with a total of 665.926 representing about the 73% of total rides.
+
+### Analysis and visualization of the number of rides per weekday
+
+```{r}
+# Visualise the number of rides per user type
+all_trips_v2 %>%
+  mutate(weekday = wday(started_at, label = TRUE)) %>% 
+  group_by(member_casual, weekday) %>% 
+  summarise(number_of_rides = n(),average_duration = mean(ride_length)) %>%
+  arrange(member_casual, weekday) %>%
+  ggplot(aes(x = weekday, y = number_of_rides, fill = member_casual)) + geom_col(position = "dodge") + labs(x = "Weekday", y = "Number of Rides", fill = "User Type") +
+  ggtitle("Number of rides by Weekday") +
+  theme_minimal()
+```
+
+The previous chart represent the total rides taken from Sunday to Saturday in the first quarter of 2023. In general, annual members are the most active along the week, with an positive trend as the week starts, and a negative trend as the week ends, while casual users have pretty constant positive trend from Monday to Saturday, with a slightly negative variation on Sunday. Annual Members have a total number of rides which does not decrease less than about 70.000 rides a day, with an ascending trend till Tuesday, with slightly less than 120.000 rides a day. Instead, casual users have a total of rides that stays between just under 30.000 to 45.000 rides a day, with an increasing usage from Monday to Saturday.
+
+### Analysis and visualization for average duration
+
+```{r}
+all_trips_v2 %>%
+  mutate(weekday = wday(started_at, label = TRUE)) %>% 
+  group_by(member_casual, weekday) %>% summarise(number_of_rides = n()
+,average_duration = mean(ride_length)) %>% arrange(member_casual, weekday) %>%
+  ggplot(aes(x = weekday, y = average_duration, fill = member_casual)) + geom_col(position = "dodge") + labs(x = "Weekday", y = "Average Duration", fill = "User Type") +
+  ggtitle("Average Duration by Weekday") +
+  theme_minimal()
+```
+
+This bar chart shows the average ride length during a week in the first quarter. Overall, casual users have an average duration of rides that is more than doubled the average ride time for annual members. Despite annual members are the most active users during the week as we saw on the "Number of rides by Weekday" bar chart, casual users have the most longest rides in terms of duration. Annual members have, during the week, a variation of about 250 seconds of ride lengths with most longest rides on Saturday and Sunday. Casual users have a variation of about 900 seconds with the highest average duration on Saturday, with an average usage of slightly more than 2.000 seconds.
+
+### Analysis and visualisation of the frequency of each bike type for members and casual user
+
+```{r}
+# Calculate the usage frequency of each bike type for members and casual riders
+bike_usage <- all_trips_v2 %>%
+  group_by(member_casual, rideable_type) %>%
+  summarise(frequency = n(), .groups = 'drop') %>%
+  group_by(member_casual) %>%
+  mutate(total_frequency = sum(frequency)) %>%
+  mutate(percentage = (frequency / total_frequency) * 100)
+
+# Create the bar plot
+ggplot(bike_usage, aes(x = rideable_type, y = percentage, fill = member_casual)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Bike Type", y = "Usage Percentage", fill = "User Type") +
+  ggtitle("Bike Usage by Type and User") +
+  theme_minimal()
+```
+
+This chart demonstrate that casual and annual members differs in the bike type usage also. While annual members prefer classic bikes, they also use electric bikes but don not use docked bikes. On the other hand casual riders prefer electric bikes but they use also classic and docked bike. Annual members use classic bike for the 55% of the times, while they use electric bike for a 45% of the times. Casual members use electric bike 55%, classic bikes 39% and docked bike 6% of the rides.
+
+### Analysis and visualisation on Cyclistic's bike demand by hour in a day
+
+```{r}
+all_trips_v2 %>%
+  ggplot(aes(x = start_time, fill = member_casual)) + labs(x = "Hour of the day", title = "Cyclistic's bike demand by hour", fill = "User Type") + geom_bar()
+```
+
+This chart compare the bike demand by hour and user type during a day. Overall, annual members request the bike service more than casual riders during the day. As we can see, there are two peaks in usage during the day. The first peak is between 7AM and 10AM (usually the start time of work), and the second peak in the evening between 5PM and 7PM (end time of work). Despite this two peaks, there is a positive trend in usage from 10 AM to 5PM and a descending trend from 8PM to 11PM and in the early morning.
+
+### Analysis and visualisation on Cyclistic's bike demand per hour and day of the week
+
+```{r}
+all_trips_v2 %>%
+  ggplot(aes(x = start_time, fill = member_casual)) + labs(x = "Hour of the day", title = "Cyclistic's bike demand by hour and day of the week", fill = "User Type") + geom_bar() + facet_wrap(~ day_of_week)
+```
+
+These bar charts illustrate how is the distribution in usage by hour and day of the week. We can see two main differences, the first difference is the different trend of use during the week and on weekends. From Monday to Friday we can see (as we analysed before) that there are two main peaks of bike request, respectively the start and end time of work. The second difference is the amount of request of casual riders during the weekend and during week days. In fact, on Saturdays and Sundays the curve is made up of half annual members and the other half of casual users, while during the week most of the curve is made up by annual members.
+
+### Analysis and visualisation of the dataset on coordinate basis
+
+```{r}
+# Let's create the coordinates data of the rides
+#Adding a new data frame 
+coordinates_df <- all_trips_v2 %>%
+  filter(start_lng != end_lng & start_lat != end_lat) %>%
+  group_by(start_lng, start_lat, end_lng, end_lat, member_casual, rideable_type) %>%
+  summarise(total_rides = n(), .groups = "drop") %>%
+  filter(total_rides >100)
+
+# Let's create two different dataframe depending on user type
+casual_riders <- coordinates_df %>%
+  filter(member_casual == "casual")
+member_riders <- coordinates_df %>%
+  filter(member_casual == "member")
+```
+
+```{r}
+library(leaflet)
+
+# Crea una mappa di Chicago
+chicago_map <- leaflet() %>%
+  addTiles() %>%
+  setView(lng = -87.6298, lat = 41.8781, zoom = 12)  # Imposta la vista su Chicago
+
+# Aggiungi marcatori per i casual riders
+chicago_map <- chicago_map %>%
+  addCircleMarkers(data = casual_riders, lng = ~start_lng, lat = ~start_lat,
+                   color = "red", radius = 5, popup = "Casual Rider")
+
+# Aggiungi marcatori per i membri
+chicago_map <- chicago_map %>%
+  addCircleMarkers(data = member_riders, lng = ~start_lng, lat = ~start_lat,
+                   color = "blue", radius = 5, popup = "Member Rider")
+
+# Visualizza la mappa
+chicago_map
+```
+The map above shows the most common start points (\>100) of casual and annual members in Chicago. Overall, annual members have a more fixed use for bikes and their preferred routes are distributed among all the city map. On the other hand, casual riders usually take their bike near the bay area and rarely on the city center.
+
+## Share insights
+
+### Main insights and finding conclsuions
+
+-   Annual members hold the biggest portion of total rides, about 73% of total rides
+-   Despite the total rides, casual user use the bike sharing service for bigger rides in terms of time duration.\
+-   Annual members use only two of three type of bike (classic and electric). They prefer to use classic bike (55%).
+-   Casual user prefer electric bike (55%) but they use every type of bike.
+-   During the week there are two peaks in request during the day in the morning (8AM to 10 AM), and in the evening (5PM to 7PM). This is because 30% use the bike sharing service to commute to work.
+-   In weekends there is an equal distribution of users between casual and annual members
+-   Casual members usually start their rides near the bay area, while members have more fixed starting point among all the city.
+
+## Act
+
+### Conclusions and reccomendations
+
+This three recommendations are data based and with the final purpose of convert casual riders into annual members.\
+- Weekend Membership: offer a weekend-only annual membership with a different price than the full annual membership. 
+- Targeted Communication: display coupons and discounts in the bay area with a special price or a trial period for casual rider, and highlight cost savings. Otherwise, start a mail marketing campaing. 
+- Incentivise Frequent Usage: create a loyalty program that rewards electric bike usage with credits every mile ridden that can be spent to buy the annual membership. 
+
+*Note: All ride ids are unique, so we can't conclude if the same rider took several rides. More rider data are required for further analysis. 
+
